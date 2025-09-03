@@ -46,18 +46,6 @@
   </header>
 
   <div class="wrap">
-    <section class="card" style="padding:12px">
-      <div class="row">
-        <input id="src" type="url" placeholder="URL del JSON (p.ej. /routine.json o https://raw.githubusercontent.com/.../routine.json)">
-        <button id="load" class="primary">Cargar</button>
-        <button id="save">Guardar URL</button>
-        <button id="clear">Borrar guardado</button>
-      </div>
-      <div class="muted" style="margin-top:8px">
-        Tip: también podés pasar <code>?src=URL</code> en la dirección de la página.
-      </div>
-    </section>
-
     <section class="card table-wrap" id="tableCard" style="display:none">
       <table id="routineTable" aria-label="Tabla de rutina">
         <thead>
@@ -85,10 +73,6 @@
     const saved = localStorage.getItem('rutina_src');
     const initialSrc = qs.get('src') || saved || DEFAULT_DATA_URL;
 
-    const srcInput = document.getElementById('src');
-    const loadBtn = document.getElementById('load');
-    const saveBtn = document.getElementById('save');
-    const clearBtn = document.getElementById('clear');
     const status = document.getElementById('status');
     const tableCard = document.getElementById('tableCard');
     const tbody = document.querySelector('#routineTable tbody');
@@ -150,11 +134,6 @@
         setStatus('Error al cargar: ' + err.message, false);
       }
     }
-
-    // Botones
-    loadBtn.addEventListener('click', () => loadJSON(srcInput.value.trim()));
-    saveBtn.addEventListener('click', () => { localStorage.setItem('rutina_src', srcInput.value.trim()); setStatus('URL guardada ✓'); });
-    clearBtn.addEventListener('click', () => { localStorage.removeItem('rutina_src'); setStatus('Guardado borrado'); });
 
     // Inicial
     loadJSON(initialSrc);
