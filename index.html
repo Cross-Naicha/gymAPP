@@ -25,6 +25,8 @@
     .status.err{background:linear-gradient(180deg,rgba(255,99,99,.25),transparent)}
     .wrap{max-width:980px;margin:0 auto}
     .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+
+    /* Tabla (vista desktop) */
     .table-wrap{overflow:auto}
     table{width:100%;border-collapse:collapse;min-width:720px}
     thead th{
@@ -48,6 +50,24 @@
       border-radius:12px; padding:8px 10px; cursor:pointer;
     }
     .search button:hover{color:var(--ink)}
+
+    /* Lista vertical (vista móvil) */
+    .list-wrap{display:none}
+    .list{display:grid; gap:12px; padding:12px}
+    .ex-card{padding:14px; border-radius:var(--radius); border:1px solid var(--border); background:var(--card)}
+    .ex-head{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px}
+    .ex-name{font-weight:800; cursor:pointer}
+    .sets{display:grid; gap:6px}
+    .setline{display:flex; justify-content:space-between; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:0.95rem}
+    .setline .label{opacity:.8}
+    .muted{color:var(--muted)}
+
+    /* Responsivo: en pantallas chicas, se oculta la tabla y se muestra la lista */
+    @media (max-width: 680px){
+      .table-wrap{display:none !important}
+      .list-wrap{display:block}
+      .wrap{max-width:720px}
+    }
   </style>
 </head>
 <body>
@@ -63,6 +83,7 @@
   </header>
 
   <div class="wrap">
+    <!-- Vista tabla (desktop) -->
     <section class="card table-wrap" id="tableCard" style="display:none">
       <table id="routineTable" aria-label="Tabla de rutina">
         <thead>
@@ -77,6 +98,11 @@
         <tbody></tbody>
       </table>
     </section>
+
+    <!-- Vista lista (móvil) -->
+    <section class="list-wrap" id="listCard" style="display:none">
+      <div class="list" id="listView" aria-label="Lista de ejercicios"></div>
+    </section>
   </div>
 
   <script>
@@ -87,6 +113,9 @@
     const tableCard = document.getElementById('tableCard');
     const tbody = document.querySelector('#routineTable tbody');
 
+    const listCard = document.getElementById('listCard');
+    const listView = document.getElementById('listView');
+
     const searchInput = document.getElementById('search');
     const clearBtn = document.getElementById('clearBtn');
 
@@ -96,7 +125,7 @@
     }
 
     function formatNumber(n){
-      if (n == null || n === '') return '';
+      if (n == null || n === '') return '—';
       const num = Number(n);
       if (!isFinite(num)) return String(n);
       return num.toFixed(2).replace(/\.00$/,'').replace(/(\.\d*[1-9])0$/,'$1');
@@ -106,6 +135,7 @@
       return name.replace(/\S+/g, w => w[0].toUpperCase() + w.slice(1));
     }
 
+    // --------- Render tabla (desktop) ----------
     function renderTable(obj){
       tbody.innerHTML = '';
       const entries = Object.entries(obj);
@@ -113,6 +143,7 @@
       tableCard.style.display = '';
       for (const [name, vals] of entries){
         const tr = document.createElement('tr');
+        tr.dataset.name = name;
 
         const tdName = document.createElement('td');
         tdName.className = 'ex';
@@ -129,16 +160,77 @@
         for (let i=1;i<=4;i++){
           const r = vals?.['r'+i];
           const w = vals?.['w'+i];
-          const tdR = document.createElement('td'); tdR.textContent = r!=null ? formatNumber(r) : '—';
-          const tdW = document.createElement('td'); tdW.textContent = w!=null ? formatNumber(w) : '—';
+          const tdR = document.createElement('td'); tdR.textContent = formatNumber(r);
+          const tdW = document.createElement('td'); tdW.textContent = formatNumber(w);
           tr.appendChild(tdR); tr.appendChild(tdW);
         }
-
         tbody.appendChild(tr);
       }
     }
 
-    // --------- Filtro ----------
+    // --------- Render lista (móvil) ----------
+    function renderList(obj){
+      listView.innerHTML = '';
+      const entries = Object.entries(obj);
+      if (entries.length === 0){ listCard.style.display = 'none'; return; }
+      listCard.style.display = '';
+      for (const [name, vals] of entries){
+        const card = document.createElement('article');
+        card.className = 'ex-card';
+        card.dataset.name = name;
+
+        const head = document.createElement('div');
+        head.className = 'ex-head';
+
+        const title = document.createElement('div');
+        title.className = 'ex-name';
+        title.textContent = normalizeExerciseName(name);
+
+        const bodyweight = (['w1','w2','w3','w4'].some(k => Number(vals?.[k]) === 0));
+        if (bodyweight){
+          const tag = document.createElement('span');
+          tag.className='tag'; tag.textContent='BW';
+          title.appendChild(tag);
+        }
+
+        head.appendChild(title);
+        card.appendChild(head);
+
+        const sets = document.createElement('div');
+        sets.className = 'sets';
+
+        for (let i=1;i<=4;i++){
+          const r = vals?.['r'+i];
+          const w = vals?.['w'+i];
+          // Solo mostrar líneas que tengan al menos reps o peso
+          if (r != null || w != null){
+            const line = document.createElement('div');
+            line.className = 'setline';
+            const left = document.createElement('span');
+            left.className = 'label';
+            left.textContent = `S${i}`;
+            const right = document.createElement('span');
+            right.textContent = `${formatNumber(r)} / ${formatNumber(w)}`;
+            line.appendChild(left);
+            line.appendChild(right);
+            sets.appendChild(line);
+          }
+        }
+
+        // Si no hay ninguna serie informada, muestro una fila vacía para que no quede “en blanco”
+        if (!sets.children.length){
+          const line = document.createElement('div');
+          line.className = 'setline muted';
+          line.textContent = 'Sin series';
+          sets.appendChild(line);
+        }
+
+        card.appendChild(sets);
+        listView.appendChild(card);
+      }
+    }
+
+    // --------- Filtro (aplica a ambas vistas) ----------
     function normalize(str){
       return (str ?? '').toString().toLowerCase()
         .normalize('NFD').replace(/\p{Diacritic}/gu,'');
@@ -147,21 +239,37 @@
     function applyFilter(term){
       const q = normalize(term);
       let shown = 0;
+
+      // Filtra filas de la tabla
       for (const tr of tbody.querySelectorAll('tr')){
-        const name = tr.querySelector('.ex')?.textContent || '';
+        const name = tr.dataset.name || tr.querySelector('.ex')?.textContent || '';
         const hit = normalize(name).includes(q);
         tr.style.display = hit ? '' : 'none';
+      }
+
+      // Filtra tarjetas de la lista
+      for (const card of listView.querySelectorAll('.ex-card')){
+        const name = card.dataset.name || card.querySelector('.ex-name')?.textContent || '';
+        const hit = normalize(name).includes(q);
+        card.style.display = hit ? '' : 'none';
         if (hit) shown++;
       }
-      tableCard.style.display = shown ? '' : 'none';
-      setStatus(shown ? `Mostrando ${shown} ejercicio(s)` : 'Sin resultados', !!shown);
+
+      // Si estás en móvil, el conteo visible será por tarjetas; igual sirve para estado
+      const anyVisible = shown > 0;
+      tableCard.style.display = ''; // controlado por media query
+      listCard.style.display = '';  // controlado por media query
+      setStatus(anyVisible ? `Mostrando ${shown} ejercicio(s)` : 'Sin resultados', anyVisible);
     }
 
-    function bindRowClicks(){
-      for (const td of tbody.querySelectorAll('td.ex')){
-        td.addEventListener('click', () => {
-          searchInput.value = td.textContent.trim();
-          applyFilter(searchInput.value);
+    function bindNameClicks(){
+      // Click en nombres (ambas vistas) para autocompletar filtro
+      for (const el of document.querySelectorAll('.ex, .ex-name')){
+        el.addEventListener('click', () => {
+          // Solo el texto del nombre, sin el tag BW
+          const nameOnly = el.childNodes[0]?.nodeValue?.trim() || el.textContent.trim();
+          searchInput.value = nameOnly;
+          applyFilter(nameOnly);
           searchInput.focus();
         });
       }
@@ -184,6 +292,8 @@
       if (q){
         searchInput.value = q;
         applyFilter(q);
+      } else {
+        applyFilter('');
       }
     }
 
@@ -194,14 +304,17 @@
         const res = await fetch(url, { cache: 'no-cache' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
+
         renderTable(data);
-        bindRowClicks();
+        renderList(data);
+        bindNameClicks();
         initQueryFilter();
-        applyFilter(searchInput.value || '');
+
         setStatus('Cargado ✓');
       }catch(err){
         console.error(err);
         tableCard.style.display = 'none';
+        listCard.style.display = 'none';
         setStatus('Error: ' + err.message, false);
       }
     }
