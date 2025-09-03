@@ -9,31 +9,56 @@
       --bg:#0b0c10;--card:#121318;--ink:#e8eaf1;--muted:#a9b0c0;--accent:#7c5cff;--border:#232533;
       --shadow:0 10px 25px rgba(0,0,0,.35);--radius:14px;
     }
-    @media (prefers-color-scheme: light){:root{--bg:#f6f7fb;--card:#fff;--ink:#151824;--muted:#57607a;--border:#e6e8ef;--shadow:0 10px 25px rgba(0,0,0,.08)}}
+    @media (prefers-color-scheme: light){
+      :root{--bg:#f6f7fb;--card:#fff;--ink:#151824;--muted:#57607a;--border:#e6e8ef;--shadow:0 10px 25px rgba(0,0,0,.08)}
+    }
     *{box-sizing:border-box}
     body{
       margin:0; font-family: ui-sans-serif,system-ui,-apple-system,Roboto,Arial;
       background: var(--bg); color: var(--ink); padding:20px; line-height:1.35;
     }
-    header{max-width:980px;margin:0 auto 16px;display:flex;align-items:center;justify-content:space-between}
+    header{
+      max-width:980px;margin:0 auto 16px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap
+    }
     h1{font-size:clamp(22px,3.2vw,30px);margin:0}
-    .muted{color:var(--muted);font-size:.95rem}
     .status{padding:8px 12px;border-radius:999px;background:linear-gradient(180deg,rgba(88,213,166,.2),transparent)}
     .status.err{background:linear-gradient(180deg,rgba(255,99,99,.25),transparent)}
     .wrap{max-width:980px;margin:0 auto}
     .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
     .table-wrap{overflow:auto}
     table{width:100%;border-collapse:collapse;min-width:720px}
-    thead th{position:sticky;top:0;background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,0));backdrop-filter:blur(6px);text-align:left;font-size:.9rem;color:var(--muted)}
+    thead th{
+      position:sticky;top:0;background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,0));
+      backdrop-filter:blur(6px);text-align:left;font-size:.9rem;color:var(--muted)
+    }
     th,td{padding:12px 10px;border-bottom:1px solid var(--border)}
     tbody tr:hover{background:rgba(124,92,255,.08)}
-    .ex{font-weight:700}
+    .ex{font-weight:700;cursor:pointer}
     .tag{display:inline-block;padding:2px 8px;border-radius:999px;background:rgba(124,92,255,.15);color:#cfc7ff;font-size:.8rem;margin-left:6px}
+
+    /* Buscador */
+    .search{display:flex;gap:8px;align-items:center}
+    .search input{
+      flex:1; max-width:280px; padding:10px 12px; border-radius:12px; border:1px solid var(--border);
+      background:var(--card); color:var(--ink); outline:none;
+    }
+    .search input:focus{box-shadow:0 0 0 3px rgba(124,92,255,.25)}
+    .search button{
+      border:1px solid var(--border); background:var(--card); color:var(--muted);
+      border-radius:12px; padding:8px 10px; cursor:pointer;
+    }
+    .search button:hover{color:var(--ink)}
   </style>
 </head>
 <body>
   <header>
     <h1>Rutina de hoy</h1>
+
+    <div class="search" role="search">
+      <input id="search" type="search" placeholder="Filtrar ejercicio…" aria-label="Filtrar ejercicio" />
+      <button id="clearBtn" type="button" title="Limpiar" aria-label="Limpiar filtro">×</button>
+    </div>
+
     <div id="status" class="status">Cargando…</div>
   </header>
 
@@ -55,14 +80,15 @@
   </div>
 
   <script>
-    // ⚙️ Config: dónde está tu JSON
-    const DEFAULT_DATA_URL = 'routine.json'; 
-    // Ejemplo alternativo: 
-    // const DEFAULT_DATA_URL = 'https://raw.githubusercontent.com/USUARIO/REPO/main/routine.json';
+    // ⚙️ Config: dónde está tu JSON (mismo folder que este HTML)
+    const DEFAULT_DATA_URL = 'routine.json';
 
     const status = document.getElementById('status');
     const tableCard = document.getElementById('tableCard');
     const tbody = document.querySelector('#routineTable tbody');
+
+    const searchInput = document.getElementById('search');
+    const clearBtn = document.getElementById('clearBtn');
 
     function setStatus(text, ok = true){
       status.textContent = text;
@@ -87,12 +113,19 @@
       tableCard.style.display = '';
       for (const [name, vals] of entries){
         const tr = document.createElement('tr');
+
         const tdName = document.createElement('td');
         tdName.className = 'ex';
         tdName.textContent = normalizeExerciseName(name);
+
         const bodyweight = (['w1','w2','w3','w4'].some(k => Number(vals?.[k]) === 0));
-        if (bodyweight){ const tag = document.createElement('span'); tag.className='tag'; tag.textContent='BW'; tdName.appendChild(tag); }
+        if (bodyweight){
+          const tag = document.createElement('span');
+          tag.className='tag'; tag.textContent='BW';
+          tdName.appendChild(tag);
+        }
         tr.appendChild(tdName);
+
         for (let i=1;i<=4;i++){
           const r = vals?.['r'+i];
           const w = vals?.['w'+i];
@@ -100,10 +133,61 @@
           const tdW = document.createElement('td'); tdW.textContent = w!=null ? formatNumber(w) : '—';
           tr.appendChild(tdR); tr.appendChild(tdW);
         }
+
         tbody.appendChild(tr);
       }
     }
 
+    // --------- Filtro ----------
+    function normalize(str){
+      return (str ?? '').toString().toLowerCase()
+        .normalize('NFD').replace(/\p{Diacritic}/gu,'');
+    }
+
+    function applyFilter(term){
+      const q = normalize(term);
+      let shown = 0;
+      for (const tr of tbody.querySelectorAll('tr')){
+        const name = tr.querySelector('.ex')?.textContent || '';
+        const hit = normalize(name).includes(q);
+        tr.style.display = hit ? '' : 'none';
+        if (hit) shown++;
+      }
+      tableCard.style.display = shown ? '' : 'none';
+      setStatus(shown ? `Mostrando ${shown} ejercicio(s)` : 'Sin resultados', !!shown);
+    }
+
+    function bindRowClicks(){
+      for (const td of tbody.querySelectorAll('td.ex')){
+        td.addEventListener('click', () => {
+          searchInput.value = td.textContent.trim();
+          applyFilter(searchInput.value);
+          searchInput.focus();
+        });
+      }
+    }
+
+    // Eventos del buscador
+    searchInput.addEventListener('input', () => applyFilter(searchInput.value));
+    clearBtn.addEventListener('click', () => {
+      searchInput.value=''; applyFilter(''); searchInput.focus();
+    });
+    document.addEventListener('keydown', (e)=>{
+      if (e.key === 'Escape'){
+        searchInput.value=''; applyFilter(''); searchInput.focus();
+      }
+    });
+
+    // Soporte querystring: ?q=prensa
+    function initQueryFilter(){
+      const q = new URLSearchParams(location.search).get('q');
+      if (q){
+        searchInput.value = q;
+        applyFilter(q);
+      }
+    }
+
+    // --------- Carga de datos ----------
     async function loadJSON(url){
       try{
         setStatus('Cargando…');
@@ -111,6 +195,9 @@
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         renderTable(data);
+        bindRowClicks();
+        initQueryFilter();
+        applyFilter(searchInput.value || '');
         setStatus('Cargado ✓');
       }catch(err){
         console.error(err);
