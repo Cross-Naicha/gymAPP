@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rutina de hoy</title>
+  <style>
+    :root{
+      --bg:#0b0c10;--card:#121318;--ink:#e8eaf1;--muted:#a9b0c0;--accent:#7c5cff;--border:#232533;
+      --shadow:0 10px 25px rgba(0,0,0,.35);--radius:14px;
+    }
+    @media (prefers-color-scheme: light){:root{--bg:#f6f7fb;--card:#fff;--ink:#151824;--muted:#57607a;--border:#e6e8ef;--shadow:0 10px 25px rgba(0,0,0,.08)}}
+    *{box-sizing:border-box}
+    html,body{margin:0;height:100%}
+    body{
+      font-family: ui-sans-serif,system-ui,-apple-system,Roboto,Arial; background: var(--bg); color: var(--ink);
+      padding:20px; line-height:1.35;
+    }
+    header{max-width:980px;margin:0 auto 16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+    h1{font-size:clamp(22px,3.2vw,30px);margin:0}
+    .muted{color:var(--muted);font-size:.95rem}
+    .wrap{max-width:980px;margin:0 auto;display:grid;gap:16px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+    .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+    input[type="url"]{flex:1;min-width:240px;background:transparent;border:1px dashed var(--border);border-radius:12px;color:var(--ink);padding:10px}
+    button{border:1px solid var(--border);background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,0));color:var(--ink);padding:10px 14px;border-radius:12px;cursor:pointer;font-weight:600}
+    button.primary{background:linear-gradient(180deg,var(--accent),#6141ff);border-color:transparent;color:white}
+    .status{padding:8px 12px;border-radius:999px;background:linear-gradient(180deg,rgba(88,213,166,.2),transparent)}
+    .status.err{background:linear-gradient(180deg,rgba(255,99,99,.25),transparent)}
+    .table-wrap{overflow:auto}
+    table{width:100%;border-collapse:collapse;min-width:720px}
+    thead th{position:sticky;top:0;background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,0));backdrop-filter:blur(6px);text-align:left;font-size:.9rem;color:var(--muted)}
+    th,td{padding:12px 10px;border-bottom:1px solid var(--border)}
+    tbody tr:hover{background:rgba(124,92,255,.08)}
+    .ex{font-weight:700}
+    .tag{display:inline-block;padding:2px 8px;border-radius:999px;background:rgba(124,92,255,.15);color:#cfc7ff;font-size:.8rem;margin-left:6px}
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Rutina de hoy</h1>
+      <div class="muted">Fuente: JSON remoto desde tu repositorio.</div>
+    </div>
+    <div id="status" class="status">Listo</div>
+  </header>
+
+  <div class="wrap">
+    <section class="card" style="padding:12px">
+      <div class="row">
+        <input id="src" type="url" placeholder="URL del JSON (p.ej. /routine.json o https://raw.githubusercontent.com/.../routine.json)">
+        <button id="load" class="primary">Cargar</button>
+        <button id="save">Guardar URL</button>
+        <button id="clear">Borrar guardado</button>
+      </div>
+      <div class="muted" style="margin-top:8px">
+        Tip: también podés pasar <code>?src=URL</code> en la dirección de la página.
+      </div>
+    </section>
+
+    <section class="card table-wrap" id="tableCard" style="display:none">
+      <table id="routineTable" aria-label="Tabla de rutina">
+        <thead>
+          <tr>
+            <th>Ejercicio</th>
+            <th>S1 Reps</th><th>S1 Peso</th>
+            <th>S2 Reps</th><th>S2 Peso</th>
+            <th>S3 Reps</th><th>S3 Peso</th>
+            <th>S4 Reps</th><th>S4 Peso</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </div>
+
+  <script>
+    // ---- CONFIG BÁSICA ----
+    // Si servís index.html y routine.json desde GitHub Pages en el mismo repo, dejá:
+    const DEFAULT_DATA_URL = 'routine.json'; // relativo al sitio (p.ej. https://usuario.github.io/mi-repo/routine.json)
+    // Si preferís la URL cruda, ej:
+    // const DEFAULT_DATA_URL = 'https://raw.githubusercontent.com/USUARIO/REPO/RAMA/routine.json';
+
+    const qs = new URLSearchParams(location.search);
+    const saved = localStorage.getItem('rutina_src');
+    const initialSrc = qs.get('src') || saved || DEFAULT_DATA_URL;
+
+    const srcInput = document.getElementById('src');
+    const loadBtn = document.getElementById('load');
+    const saveBtn = document.getElementById('save');
+    const clearBtn = document.getElementById('clear');
+    const status = document.getElementById('status');
+    const tableCard = document.getElementById('tableCard');
+    const tbody = document.querySelector('#routineTable tbody');
+
+    srcInput.value = initialSrc;
+
+    function setStatus(text, ok = true){
+      status.textContent = text;
+      status.className = ok ? 'status' : 'status err';
+    }
+
+    function formatNumber(n){
+      if (n == null || n === '') return '';
+      const num = Number(n);
+      if (!isFinite(num)) return String(n);
+      return num.toFixed(2).replace(/\.00$/,'').replace(/(\.\d*[1-9])0$/,'$1');
+    }
+
+    function normalizeExerciseName(name){
+      return name.replace(/\S+/g, w => w[0].toUpperCase() + w.slice(1));
+    }
+
+    function renderTable(obj){
+      tbody.innerHTML = '';
+      const entries = Object.entries(obj);
+      if (entries.length === 0){ tableCard.style.display = 'none'; return; }
+      tableCard.style.display = '';
+      for (const [name, vals] of entries){
+        const tr = document.createElement('tr');
+        const tdName = document.createElement('td');
+        tdName.className = 'ex';
+        tdName.textContent = normalizeExerciseName(name);
+        const bodyweight = (['w1','w2','w3','w4'].some(k => Number(vals?.[k]) === 0));
+        if (bodyweight){ const tag = document.createElement('span'); tag.className='tag'; tag.textContent='BW'; tdName.appendChild(tag); }
+        tr.appendChild(tdName);
+        for (let i=1;i<=4;i++){
+          const r = vals?.['r'+i];
+          const w = vals?.['w'+i];
+          const tdR = document.createElement('td'); tdR.textContent = r!=null ? formatNumber(r) : '—';
+          const tdW = document.createElement('td'); tdW.textContent = w!=null ? formatNumber(w) : '—';
+          tr.appendChild(tdR); tr.appendChild(tdW);
+        }
+        tbody.appendChild(tr);
+      }
+    }
+
+    async function loadJSON(url){
+      try{
+        setStatus('Cargando…');
+        // cache: 'no-cache' para ver cambios recientes en el repo sin esperar al caché del navegador/CDN
+        const res = await fetch(url, { cache: 'no-cache' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        renderTable(data);
+        setStatus('Cargado ✓');
+      }catch(err){
+        console.error(err);
+        tableCard.style.display = 'none';
+        setStatus('Error al cargar: ' + err.message, false);
+      }
+    }
+
+    // Botones
+    loadBtn.addEventListener('click', () => loadJSON(srcInput.value.trim()));
+    saveBtn.addEventListener('click', () => { localStorage.setItem('rutina_src', srcInput.value.trim()); setStatus('URL guardada ✓'); });
+    clearBtn.addEventListener('click', () => { localStorage.removeItem('rutina_src'); setStatus('Guardado borrado'); });
+
+    // Inicial
+    loadJSON(initialSrc);
+  </script>
+</body>
+</html>
